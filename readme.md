@@ -242,3 +242,120 @@ client.py
         pass
         
 ## 4-4 创建User模型
+
+创建 models 文件夹 user.py 模型类
+
+    from sqlalchemy import Column, Integer, String, SmallInteger
+    from werkzeug.security import generate_password_hash
+    from app.models.base import Base, db
+    
+    
+    class User(Base):
+        id = Column(Integer, primary_key=True)
+        email = Column(String(24), unique=True, nullable=False)
+        nickname = Column(String(24), unique=True)
+        auth = Column(SmallInteger, default=1)
+        _password = Column('password', String(128))
+    
+        @property
+        def password(self):
+            return self._password
+    
+        @password.setter
+        def password(self, raw):
+            self._password = generate_password_hash(raw)
+    
+        @staticmethod
+        def register_by_email(nickname, account, secret):
+            with db.auto_commit():
+                user = User()
+                user.nickname = nickname
+                user.email = account
+                user.password = secret
+                db.session.add(user)
+
+base.py 模型基类
+
+    from datetime import datetime
+    from flask_sqlalchemy import SQLAlchemy as _SQLAlchemy, BaseQuery
+    from sqlalchemy import Column, Integer, SmallInteger
+    from contextlib import contextmanager
+    
+    
+    class SQLAlchemy(_SQLAlchemy):
+        @contextmanager
+        def auto_commit(self):
+            try:
+                yield
+                self.session.commit()
+            except Exception as e:
+                db.session.rollback()
+                raise e
+    
+    
+    class Query(BaseQuery):
+        def filter_by(self, **kwargs):
+            if 'status' not in kwargs.keys():
+                kwargs['status'] = 1
+            return super(Query, self).filter_by(**kwargs)
+    
+    
+    db = SQLAlchemy(query_class=Query)
+    
+    
+    class Base(db.Model):
+        __abstract__ = True
+        create_time = Column(Integer)
+        status = Column(SmallInteger, default=1)
+    
+        def __init__(self):
+            self.create_time = int(datetime.now().timestamp())
+    
+        @property
+        def create_datetime(self):
+            if self.create_time:
+                return datetime.fromtimestamp(self.create_time)
+            else:
+                return None
+    
+        def set_attrs(self, attrs_dict):
+            for key, value in attrs_dict.items():
+                if hasattr(self, key) and key != 'id':
+                    setattr(self, key, value)
+    
+        def delete(self):
+            self.status = 0
+
+给模型添加一个注册的功能
+
+	@staticmethod
+	def register_by_email(nickname, account, secret):
+		with db.auto_commit():
+			user = User()
+			user.nickname = nickname
+			user.email = account
+			user.password = secret
+			db.session.add(user)
+		
+这里 User() 是类本身,在对象里面创建一个对象本身是不合理的,如果是静态方法就没有问题.
+
+    @staticmethod
+    
+要让 flask_sqlalchemy 生效就必须注册插件 app.py
+
+    def register_plugin(app):
+        from app.models.base import db
+        db.init_app(app)
+        with app.app_context():
+            db.create_all()
+    
+    
+    def create_app():
+        app = Flask(__name__)
+        app.config.from_object('app.config.setting')
+        app.config.from_object('app.config.setting')
+        register_blueprints(app)
+        register_plugin(app)
+        return app
+        
+## 4-5 完成客户端注册

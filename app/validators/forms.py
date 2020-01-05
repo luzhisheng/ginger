@@ -14,3 +14,7 @@ class ClientForm(Form):
 			client = ClientTypeEnum(value.data)
 		except ValueError as e:
 			raise e
+
+
+class UserEmailForm(ClientForm):
+	pass
