@@ -1,14 +1,17 @@
-from wtforms import Form, StringField, IntegerField
+from wtforms import StringField, IntegerField
 from wtforms.validators import DataRequired, length, Email, Regexp
+from wtforms import ValidationError
+
 from app.libs.enums import ClientTypeEnum
 from app.models.user import User
-from wtforms import ValidationError
+from app.validators.base import BaseForm as Form
 
 
 class ClientForm(Form):
-	account = StringField(validators=[DataRequired(),
-									  length(max=32, min=5)])
-	secret = StringField(validators=[DataRequired()])
+	account = StringField(validators=[DataRequired(message='不允许为空'), length(
+		min=5, max=32
+	)])
+	secret = StringField()
 	type = IntegerField(validators=[DataRequired()])
 
 	def validate_type(self, value):
@@ -16,7 +19,6 @@ class ClientForm(Form):
 			client = ClientTypeEnum(value.data)
 		except ValueError as e:
 			raise e
-
 		self.type.data = client
 
 

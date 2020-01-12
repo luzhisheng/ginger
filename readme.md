@@ -504,3 +504,75 @@ WTForms其实是非常强大的验证插件。但很多同学对WTForms的理解
 
 ## 5-1 重写WTForms 一
 
+这里的思路是将 WTForms 不抛出异常的特性修改为抛出异常的特性
+
+编写 base.py
+
+    from flask import request
+    from wtforms import Form
+    
+    from app.libs.error_code import ParameterException
+    
+    
+    class BaseForm(Form):
+        def __init__(self):
+            super(BaseForm, self).__init__(data=data, **args)
+    
+        def validate_for_api(self):
+            valid = super(BaseForm, self).validate()
+            if not valid:
+                raise ParameterException(msg=self.errors)
+                
+self.errors 是 WTForms 内置方法
+
+forms.py 直接继承 base form
+
+    from app.validators.base import BaseForm as Form
+    
+api 层
+
+    @api.route('/register', methods=['POST'])
+    def create_client():
+        form = ClientForm().validate_for_api()
+        promise = {
+            ClientTypeEnum.USER_EMAIL: __register_user_by_email
+        }
+        promise[form.type.data]()
+        return Success()
+    
+还可以自定义异常信息
+
+    class ClientForm(Form):
+        account = StringField(validators=[DataRequired(message='不允许为空'), length(
+            min=5, max=32
+        )])
+        
+## 5-3 继续优化
+
+每次api 都需要接受 data = request.get_json(silent=True) 将其写入 base.from 中
+
+    data = request.get_json(silent=True)
+    
+并且将 form 返回 return self
+
+    class BaseForm(Form):
+        def __init__(self):
+            data = request.get_json(silent=True)
+            args = request.args.to_dict()
+            super(BaseForm, self).__init__(data=data, **args)
+    
+        def validate_for_api(self):
+            valid = super(BaseForm, self).validate()
+            if not valid:
+                # form errors
+                raise ParameterException(msg=self.errors)
+            return self
+
+下面自定义返回正常信息返回
+
+    class Success(APIException):
+        code = 201
+        msg = 'ok'
+        error_code = 0
+        
+## 5-4 已知异常和未知异常
