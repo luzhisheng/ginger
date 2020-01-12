@@ -253,7 +253,7 @@ client.py
     class User(Base):
         id = Column(Integer, primary_key=True)
         email = Column(String(24), unique=True, nullable=False)
-        nickname = Column(String(24), unique=True)
+        nickname = CValidationError()olumn(String(24), unique=True)
         auth = Column(SmallInteger, default=1)
         _password = Column('password', String(128))
     
@@ -359,3 +359,148 @@ base.py 模型基类
         return app
         
 ## 4-5 完成客户端注册
+
+我们定义的 ClientForm 是通用的form,需要满足个性化就继承 ClientForm.
+
+    class UserEmailForm(ClientForm):
+        account = StringField(validators=[
+            Email(message='invalidate email')
+        ])
+        secret = StringField(validators=[
+            DataRequired(),
+            # 密码只能包含字母，数字和“ _”
+            Regexp(r'^[A-Za-z0-9_*&$#@]{6,22}$')
+        ])
+        nickname = StringField(validators=[DataRequired(),
+                                           length(min=2, max=22)])
+    
+        def validate_account(self, value):
+            if User.query.filter_by(email=value.data).first():
+                raise ValidationError()
+                
+这里做一次 validate_account 数据库验证,如果email已经存在就抛出异常 
+
+    ValidationError()
+    
+wtforms 内置异常 ValidationError
+
+回到 api 中去实现 UserEmail 注册
+
+    def __register_user_by_email():
+        form = UserEmailForm(data=request.json)
+        User.register_by_email(form.nickname.data,
+                               form.account.data,
+                               form.secret.data)
+
+通过 create_client 调用 UserEmail 注册, ClientTypeEnum.USER_EMAIL 是健(枚举类型)
+
+    promise = {
+        ClientTypeEnum.USER_EMAIL: __register_user_by_email,
+    }
+
+form 中返回 type
+
+	def validate_type(self, value):
+		try:
+			client = ClientTypeEnum(value.data)
+		except ValueError as e:
+			raise e
+
+		self.type.data = client
+	
+实现 api 层调用
+
+        promise[form.type.data]()
+    return 'success'
+    
+## 4-6 生成用户数据
+
+配置信息 secure.py
+
+    SQLALCHEMY_DATABASE_URI = 'mysql+cymysql://root:123456@localhost/ginger'
+    SECRET_KEY = '\x88D\xf09\x6\xa0A\x7\xc5V\xbe\x8b\xef\xd7\xd8\xd3\xe6\x98*4'
+
+## 4-7 自定义异常对象
+
+如果用 wtforms 出现异常会返回 False
+
+自定义异常继承 HTTPException 类
+
+    from werkzeug.exceptions import HTTPException
+    
+    class ClientTypeError(HTTPException):
+        code = 400
+        msg = 'client is invalid'
+        error_code = 1006
+
+api 返回
+    
+    @api.route('/register', methods=['POST'])
+    def create_client():
+        data = request.json
+        form = ClientForm(data=data)
+        if form.validate():
+            promise = {
+                ClientTypeEnum.USER_EMAIL: __register_user_by_email,
+            }
+            promise[form.type.data]()
+        else:
+            ClientTypeError()
+        return 'success'
+        
+## 4-9 自定义 APIException
+ 
+需要返回 json 数据
+
+error.py
+
+get_body() 返回主题信息
+
+msg 重写了 description
+
+get_headers() 定义了返回类型是json
+
+
+    from flask import request, json
+    from werkzeug.exceptions import HTTPException
+    
+    
+    class APIException(HTTPException):
+        code = 500
+        msg = 'sorry, we made a mistake (*￣︶￣)!'
+        error_code = 999
+    
+        def __init__(self, msg=None, code=None, error_code=None, headers=None):
+            if code:
+                self.code = code
+            if error_code:
+                self.error_code = error_code
+            if msg:
+                self.msg = msg
+            super(APIException, self).__init__(msg, None)
+    
+        def get_body(self, environ=None):
+            body = dict(
+                msg=self.msg,
+                error_code=self.error_code,
+                request=request.method + ' ' + self.get_url_no_param()
+            )
+            text = json.dumps(body)
+            return text
+    
+        def get_headers(self, environ=None):
+            """Get a list of headers."""
+            return [('Content-Type', 'application/json')]
+    
+        @staticmethod
+        def get_url_no_param():
+            full_path = str(request.full_path)
+            main_path = full_path.split('?')
+            return main_path[0]
+    
+# 第5章 理解WTForms并灵活改造她
+
+WTForms其实是非常强大的验证插件。但很多同学对WTForms的理解仅仅停留在“验证表单”上。那WTForms可以用来做API的参数验证码？完全可以，但这需要你灵活的使用它，对它做出一些“改变”
+
+## 5-1 重写WTForms 一
+

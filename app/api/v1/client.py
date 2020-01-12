@@ -1,5 +1,6 @@
 from app.libs.redprint import Redprint
-from app.validators.forms import ClientForm
+from app.libs.error_code import ClientTypeError, Success
+from app.validators.forms import ClientForm, UserEmailForm
 from flask import request, json
 from app.libs.enums import ClientTypeEnum
 from app.models.user import User
@@ -15,8 +16,14 @@ def create_client():
 		promise = {
 			ClientTypeEnum.USER_EMAIL: __register_user_by_email,
 		}
+		promise[form.type.data]()
+	else:
+		ClientTypeError()
+	return 'success'
 
 
-def __register_user_by_email(form):
-	# User.register_by_email(,form.account.data, form.secret.data)
-	pass
+def __register_user_by_email():
+	form = UserEmailForm(data=request.json)
+	User.register_by_email(form.nickname.data,
+						   form.account.data,
+						   form.secret.data)
